@@ -20,7 +20,7 @@ function getCookieMap(cookies = Services.cookies.cookies, groupBy) {
         if(groupBy == "firstParty") {
             let { partitionKey } = cookie.originAttributes;
             let [, partitionKeyBaseDomain] = partitionKey.substring(1, partitionKey.length - 1).split(",");
-            console.debug("key", partitionKeyBaseDomain);
+
             if (partitionKey && !partitionKeyBaseDomain) {
                 console.warn("error while parsing partition key for cookie", cookie, partitionKeyBaseDomain);
                 return;
@@ -60,8 +60,7 @@ function printCookieStats() {
     console.info("# third-party cookies", thirdPartyCookies.length);
 
     // 3rdParty cookies grouped by base domain.
-    // For each group: base domain, amount of cookies set, across how many different first parties?
-
+    // For each group: base domain, amount of cookies set, across how many different first party sites?
 
     let thirdPartyCookieArray = Object.entries(thirdPartyCookieMap).map(([baseDomain, cookies]) => {
         let firstPartyCookieMap = getCookieMap(cookies, "firstParty");
