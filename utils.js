@@ -1,69 +1,60 @@
-// TODO: filter by origin, base domain, and partition.
-// function getCookies({filterThirdParty = false} = {}) {
-//     let cookies = Services.cookies.cookies;
-
-//     if(!filterThirdParty) {
-//         return cookies;
-//     }
-
-//     return cookies.filter(cookie => {
-//         if(filterThirdParty && !cookie.originAttributes.partitionKey) {
-//             return false;
-//         }
-//         return true;
-//     });
-// }
-
-// function printCookies(filter) {
-//     let cookies = getCookies(filter);
-//     let cookiesPrintable = cookies.map((cookie) => ({
-//         host: cookie.host,
-//         creationTime: new Date(cookie.creationTime),
-//         isPartitioned: !!cookie.originAttributes.partitionKey,
-//     }))
-
-//     console.info(cookiesPrintable);
-// }
 
 function isThirdPartyCookie(cookie) {
     return !!cookie.originAttributes.partitionKey;
 }
 
-function getThirdPartyCookieMap(thirdPartyCookies) {
-    let thirdPartyCookieMap = {};
-    thirdPartyCookies.forEach(cookie => {
-        let { partitionKey } = cookie.originAttributes;
-        let [, firstPartyBaseDomain] = partitionKey.split(",");
-        if (partitionKey && !firstPartyBaseDomain) {
-            console.warn("error while parsing partition key for cookie", cookie, partitionKey);
+/**
+ * Get cookie map for an array of third-party cookies.
+ * @param {string} groupBy
+ * @returns {Object}
+ */
+function getCookieMap(cookies = Services.cookies.cookies, groupBy) {
+    if(groupBy != "firstParty" && groupBy != "thirdParty") {
+        throw new Error("Invalid value for groupBy argument.");
+    }
+
+    let cookieMap = {};
+    cookies.forEach(cookie => {
+        let key;
+
+        if(groupBy == "firstParty") {
+            let { partitionKey } = cookie.originAttributes;
+            let [, partitionKeyBaseDomain] = partitionKey.substring(1, partitionKey.length - 1).split(",");
+            console.debug("key", partitionKeyBaseDomain);
+            if (partitionKey && !partitionKeyBaseDomain) {
+                console.warn("error while parsing partition key for cookie", cookie, partitionKeyBaseDomain);
+                return;
+            }
+            key = partitionKeyBaseDomain;
+        } else {
+            // third party grouping
+            try {
+                key = Services.eTLD.getBaseDomainFromHost(cookie.rawHost);
+            } catch (e) { }
+    
+            if (!key) {
+                console.warn("error while getting third party base domain for cookie", cookie);
+                return;
+            }
+        }
+
+        if(!key) {
             return;
         }
 
-        let thirdPartyBaseDomain;
-
-        try {
-            thirdPartyBaseDomain = Services.eTLD.getBaseDomainFromHost(cookie.rawHost);
-        } catch (e) { }
-
-        if (!thirdPartyBaseDomain) {
-            console.warn("error while getting third party base domain for cookie", cookie);
-            return;
+        if (!cookieMap[key]) {
+            cookieMap[key] = [];
         }
-
-        if (!thirdPartyCookieMap[thirdPartyBaseDomain]) {
-            thirdPartyCookieMap[thirdPartyBaseDomain] = [];
-        }
-        thirdPartyCookieMap[thirdPartyBaseDomain].push(cookie);
+        cookieMap[key].push(cookie);
     });
 
-    return thirdPartyCookieMap;
+    return cookieMap;
 }
 
 function printCookieStats() {
     let cookies = Services.cookies.cookies;
     let thirdPartyCookies = cookies.filter(isThirdPartyCookie);
-    let thirdPartyCookieMap = getThirdPartyCookieMap(thirdPartyCookies);
-
+    let thirdPartyCookieMap = getCookieMap(thirdPartyCookies, "thirdParty");
 
     console.info("Total # cookies stored", cookies.length);
     console.info("# third-party cookies", thirdPartyCookies.length);
@@ -73,23 +64,21 @@ function printCookieStats() {
 
 
     let thirdPartyCookieArray = Object.entries(thirdPartyCookieMap).map(([baseDomain, cookies]) => {
-
-        //  TODO:
-        let numUniqueFirstParties = 0;
+        let firstPartyCookieMap = getCookieMap(cookies, "firstParty");
 
         return {
             domain: baseDomain,
             numCookies: cookies.length,
-            numUniqueFirstParties,
+            numUniqueFirstParties: Object.values(firstPartyCookieMap).length,
+            cookies,
         };
     }).sort((a, b) => {
-        return b.numCookies - a.numCookies;
+        return b.numUniqueFirstParties - a.numUniqueFirstParties;
     });
 
-    console.debug("Third party cookies:", thirdPartyCookieArray);
+    console.info("Third party cookies:", thirdPartyCookieArray);
 }
 
-// TODO:
-function getStorageEntries() {
-    Services.qms.listOrigins().map(origin => )
-}
+// TODO: support for storage (localStorage, etc.)
+
+printCookieStats();
